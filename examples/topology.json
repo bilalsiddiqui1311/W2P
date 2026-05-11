@@ -1,0 +1,156 @@
+{
+  "schema_version": "w2p.topology.v1",
+  "metadata": {
+    "name": "payments-platform",
+    "owner": "platform@example.com",
+    "description": "Reference secure payments topology.",
+    "tags": {
+      "domain": "payments"
+    }
+  },
+  "deployment": {
+    "provider": "aws",
+    "region": "us-east-1",
+    "environment": "prod"
+  },
+  "trust_zones": [
+    {
+      "id": "external",
+      "name": "External",
+      "exposure": "external"
+    },
+    {
+      "id": "private",
+      "name": "Private Workloads",
+      "exposure": "private"
+    },
+    {
+      "id": "public",
+      "name": "Public Edge",
+      "exposure": "public"
+    }
+  ],
+  "services": [
+    {
+      "id": "payments-api",
+      "name": "Payments API",
+      "kind": "api",
+      "runtime": "python-fastapi",
+      "image": "ghcr.io/example/payments-api:0.1.0",
+      "replicas": 2,
+      "ports": [
+        {
+          "name": "http",
+          "port": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "env": {
+        "DATABASE_URL": "secret:///w2p/payments-platform/payments-api/database-url",
+        "STRIPE_API_KEY": "secret:///w2p/payments-platform/payments-api/stripe-api-key"
+      },
+      "resources": {
+        "cpu_millicores": 512,
+        "memory_mib": 1024
+      },
+      "security": {
+        "public": true,
+        "require_auth": true,
+        "tls_required": true,
+        "run_as_non_root": true,
+        "read_only_root_fs": true,
+        "egress": "private"
+      },
+      "trust_zone": "public"
+    },
+    {
+      "id": "settlement-worker",
+      "name": "Settlement Worker",
+      "kind": "worker",
+      "runtime": "python-fastapi",
+      "image": "ghcr.io/example/settlement-worker:0.1.0",
+      "replicas": 2,
+      "ports": [],
+      "env": {
+        "DATABASE_URL": "secret:///w2p/payments-platform/settlement-worker/database-url"
+      },
+      "security": {
+        "public": false,
+        "require_auth": true,
+        "tls_required": true,
+        "run_as_non_root": true,
+        "read_only_root_fs": true,
+        "egress": "private"
+      },
+      "trust_zone": "private"
+    }
+  ],
+  "datastores": [
+    {
+      "id": "payments-db",
+      "name": "Payments Database",
+      "kind": "postgres",
+      "version": "16",
+      "encrypted_at_rest": true,
+      "backups_enabled": true,
+      "public_access": false,
+      "trust_zone": "private"
+    },
+    {
+      "id": "settlement-queue",
+      "name": "Settlement Queue",
+      "kind": "queue",
+      "encrypted_at_rest": true,
+      "backups_enabled": true,
+      "public_access": false,
+      "trust_zone": "private"
+    }
+  ],
+  "external_systems": [
+    {
+      "id": "stripe-api",
+      "name": "Stripe API",
+      "trusted": true,
+      "trust_zone": "external"
+    }
+  ],
+  "edges": [
+    {
+      "id": "payments-api-to-payments-db",
+      "from": "payments-api",
+      "to": "payments-db",
+      "protocol": "postgres",
+      "purpose": "payment persistence",
+      "encrypted": true,
+      "auth_required": true
+    },
+    {
+      "id": "payments-api-to-stripe-api",
+      "from": "payments-api",
+      "to": "stripe-api",
+      "protocol": "https",
+      "purpose": "card authorization",
+      "encrypted": true,
+      "auth_required": true
+    },
+    {
+      "id": "payments-api-to-settlement-queue",
+      "from": "payments-api",
+      "to": "settlement-queue",
+      "protocol": "sqs",
+      "purpose": "enqueue settlement jobs",
+      "encrypted": true,
+      "auth_required": true
+    },
+    {
+      "id": "settlement-worker-to-payments-db",
+      "from": "settlement-worker",
+      "to": "payments-db",
+      "protocol": "postgres",
+      "purpose": "settlement persistence",
+      "encrypted": true,
+      "auth_required": true
+    }
+  ]
+}
+

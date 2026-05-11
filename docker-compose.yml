@@ -1,0 +1,22 @@
+services:
+  api:
+    build:
+      context: .
+    image: w2p-api:0.1.0
+    ports:
+      - "127.0.0.1:8080:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      W2P_ENV: "dev"
+      W2P_DB_PATH: "/data/w2p.sqlite3"
+    volumes:
+      - w2p_data:/data
+
+volumes:
+  w2p_data: {}

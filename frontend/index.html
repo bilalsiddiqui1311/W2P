@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>W2P Workbench</title>
+    <meta
+      name="description"
+      content="Whiteboard-to-Production workbench for image capture, Terraform generation, validation, and codebase management."
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="blueprint"></div>
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">W</div>
+        <div>
+          <strong>W2P</strong>
+          <span>whiteboard to production</span>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <button class="icon-button" id="refreshButton" type="button" title="Refresh codebases" aria-label="Refresh codebases">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 0 1-15.3 6.4M3 12A9 9 0 0 1 18.3 5.6M18 2v5h-5M6 22v-5h5"/></svg>
+        </button>
+        <button class="ghost-button" id="logoutButton" type="button" hidden>Sign out</button>
+      </div>
+    </header>
+
+    <main class="app-shell">
+      <aside class="panel sidebar">
+        <section id="authPanel">
+          <div class="section-kicker">account</div>
+          <h1>Sign in to your workbench</h1>
+          <p class="muted">
+            Your generated Terraform codebases live in your profile and can be deleted any time.
+          </p>
+          <div class="segmented" role="tablist" aria-label="Authentication mode">
+            <button id="loginTab" class="active" type="button">Login</button>
+            <button id="signupTab" type="button">Signup</button>
+          </div>
+          <form id="authForm" class="form-stack">
+            <label id="nameField" hidden>
+              <span>Name</span>
+              <input id="nameInput" name="name" autocomplete="name" placeholder="Avery Platform" />
+            </label>
+            <label>
+              <span>Email</span>
+              <input id="emailInput" name="email" autocomplete="email" placeholder="you@company.com" required />
+            </label>
+            <label>
+              <span>Password</span>
+              <input id="passwordInput" name="password" type="password" autocomplete="current-password" required />
+            </label>
+            <button class="primary-button" type="submit">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+              <span id="authSubmitLabel">Login</span>
+            </button>
+          </form>
+        </section>
+
+        <section id="profilePanel" hidden>
+          <div class="section-kicker">profile</div>
+          <div class="profile-block">
+            <div class="avatar" id="avatar">W</div>
+            <div>
+              <h2 id="profileName">Profile</h2>
+              <p id="profileEmail" class="muted"></p>
+            </div>
+          </div>
+          <div class="divider"></div>
+          <div class="section-row">
+            <div>
+              <div class="section-kicker">codebases</div>
+              <p class="muted tight" id="codebaseCount">0 saved</p>
+            </div>
+          </div>
+          <div id="codebaseList" class="codebase-list"></div>
+        </section>
+      </aside>
+
+      <section class="workspace">
+        <div class="hero-strip">
+          <img src="/assets/hero-w2p.jpg" alt="Architecture sketch becoming production code" />
+          <div class="hero-copy">
+            <div class="hero-badge">
+              <span></span>
+              v0.1 active workbench
+            </div>
+            <div class="section-kicker">agent pipeline</div>
+            <h2>Image in. <span class="text-gradient">Terraform out.</span> Validation included.</h2>
+            <div class="stack-chips" aria-label="Supported stack signals">
+              <span>AWS</span>
+              <span>Terraform</span>
+              <span>FastAPI</span>
+              <span>Policy-as-Code</span>
+              <span>Docker</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="workflow-strip" aria-label="Generation workflow">
+          <div class="workflow-card">
+            <span>01</span>
+            <strong>Sketch / upload</strong>
+            <small>Camera or image stays one click away.</small>
+          </div>
+          <div class="workflow-card">
+            <span>02</span>
+            <strong>AI architecture parse</strong>
+            <small>Vision providers normalize services and edges.</small>
+          </div>
+          <div class="workflow-card">
+            <span>03</span>
+            <strong>Generate IaC</strong>
+            <small>Terraform, backend, containers, policy.</small>
+          </div>
+          <div class="workflow-card">
+            <span>04</span>
+            <strong>Verify and export</strong>
+            <small>Lint checks plus downloadable Terraform.</small>
+          </div>
+        </div>
+
+        <div class="status-grid">
+          <div class="metric">
+            <span>Topology</span>
+            <strong id="topologyStatus">Waiting</strong>
+          </div>
+          <div class="metric">
+            <span>Policy</span>
+            <strong id="policyStatus">Waiting</strong>
+          </div>
+          <div class="metric">
+            <span>Terraform</span>
+            <strong id="terraformStatus">Waiting</strong>
+          </div>
+        </div>
+
+        <section class="panel output-panel">
+          <div class="section-row">
+            <div>
+              <div class="section-kicker">generated codebase</div>
+              <h2 id="activeTitle">No codebase selected</h2>
+            </div>
+            <div class="output-actions">
+              <select id="fileSelect" aria-label="Generated file selector"></select>
+              <button class="ghost-button" id="downloadTerraformButton" type="button" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+                Download Terraform
+              </button>
+            </div>
+          </div>
+          <pre id="codeOutput" class="code-output"><code>Select or generate a codebase to inspect Terraform, backend, container, policy, and schema artifacts.</code></pre>
+        </section>
+
+        <section class="panel validation-panel">
+          <div class="section-row">
+            <div>
+              <div class="section-kicker">verification</div>
+              <h2>Terraform checks</h2>
+            </div>
+            <button class="ghost-button" id="rerunValidationButton" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 0 1-15.3 6.4M3 12A9 9 0 0 1 18.3 5.6M18 2v5h-5M6 22v-5h5"/></svg>
+              Re-run
+            </button>
+          </div>
+          <div id="validationOutput" class="validation-list"></div>
+        </section>
+      </section>
+
+      <aside class="panel capture-rail">
+        <div class="section-row">
+          <div>
+            <div class="section-kicker">capture</div>
+            <h2>Camera or image upload</h2>
+          </div>
+        </div>
+
+        <form id="generateForm" class="form-stack">
+          <label>
+            <span>Codebase name</span>
+            <input id="codebaseName" name="name" placeholder="checkout-platform" required />
+          </label>
+          <label>
+            <span>AI model</span>
+            <select id="providerSelect" name="provider"></select>
+          </label>
+          <label>
+            <span>Model override</span>
+            <input id="modelInput" name="model" placeholder="optional provider model id" />
+          </label>
+
+          <div class="dropzone" id="dropzone">
+            <input id="imageInput" name="image" type="file" accept="image/*" />
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg>
+            <strong id="fileLabel">Drop image or choose file</strong>
+            <span>PNG, JPG, or camera capture</span>
+          </div>
+
+          <div class="camera-box">
+            <video id="cameraVideo" autoplay playsinline muted></video>
+            <canvas id="cameraCanvas" hidden></canvas>
+            <div class="camera-actions">
+              <button class="icon-button" id="startCameraButton" type="button" title="Start camera" aria-label="Start camera">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3l2-2h6l2 2h3v12H4zM12 10a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg>
+              </button>
+              <button class="icon-button" id="captureButton" type="button" title="Capture frame" aria-label="Capture frame">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14v10H5zM9 3h6l2 4H7zM12 10a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <button class="primary-button" id="generateButton" type="submit">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
+            Generate Terraform
+          </button>
+        </form>
+
+        <div id="agentNotes" class="notes"></div>
+      </aside>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

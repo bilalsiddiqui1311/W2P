@@ -1,0 +1,80 @@
+{
+  "schema_version": "w2p.visual.v1",
+  "name": "payments-platform",
+  "owner": "platform@example.com",
+  "environment": "prod",
+  "provider": "aws",
+  "region": "us-east-1",
+  "elements": [
+    {
+      "id": "shape-1",
+      "label": "Payments API",
+      "element_type": "service",
+      "subtype": "api",
+      "bounds": {
+        "x": 100,
+        "y": 80,
+        "width": 180,
+        "height": 90
+      },
+      "properties": {
+        "public": "true",
+        "port": "8000",
+        "image": "ghcr.io/example/payments-api:0.1.0",
+        "env.DATABASE_URL": "secret:///w2p/payments-platform/payments-api/database-url",
+        "env.STRIPE_API_KEY": "secret:///w2p/payments-platform/payments-api/stripe-api-key"
+      }
+    },
+    {
+      "id": "shape-2",
+      "label": "Payments DB",
+      "element_type": "datastore",
+      "subtype": "postgres",
+      "bounds": {
+        "x": 380,
+        "y": 80,
+        "width": 160,
+        "height": 90
+      },
+      "properties": {
+        "version": "16"
+      }
+    },
+    {
+      "id": "shape-3",
+      "label": "Stripe API",
+      "element_type": "external",
+      "subtype": "https",
+      "bounds": {
+        "x": 660,
+        "y": 80,
+        "width": 160,
+        "height": 90
+      },
+      "properties": {
+        "trusted": "true"
+      }
+    }
+  ],
+  "connectors": [
+    {
+      "id": "connector-1",
+      "source_element_id": "shape-1",
+      "target_element_id": "shape-2",
+      "label": "postgres",
+      "properties": {
+        "protocol": "postgres"
+      }
+    },
+    {
+      "id": "connector-2",
+      "source_element_id": "shape-1",
+      "target_element_id": "shape-3",
+      "label": "https authorization",
+      "properties": {
+        "protocol": "https"
+      }
+    }
+  ]
+}
+
