@@ -11,6 +11,23 @@ The compiler is deterministic by design. Visual inputs normalize into `w2p.visua
 
 ## Quick Start
 
+Docker Compose is the recommended way to run W2P locally. You do not need a local Python or Node setup for the workbench.
+
+```bash
+docker compose up --build
+```
+
+The W2P workbench UI will be available at `http://127.0.0.1:8080/`.
+OpenAPI will be available at `http://127.0.0.1:8080/docs`.
+
+Stop the stack:
+
+```bash
+docker compose down
+```
+
+If you want to run the Python app directly for development:
+
 ```bash
 python3 -m venv .venv
 . .venv/bin/activate
@@ -18,8 +35,27 @@ pip install -e ".[dev]"
 uvicorn w2p.api:app --reload --port 8080
 ```
 
-The W2P workbench UI will be available at `http://127.0.0.1:8080/`.
-OpenAPI will be available at `http://127.0.0.1:8080/docs`.
+## New Machine Setup
+
+For a fresh machine, you only need:
+
+- Git, to clone the repo.
+- Docker with Docker Compose support.
+- Internet access for the first image build.
+
+Then run:
+
+```bash
+git clone git@github.com:bilalsiddiqui1311/W2P.git
+cd W2P
+docker compose up --build
+```
+
+User accounts and generated codebases are stored in the named Docker volume `w2p_w2p_data`. To reset local app data, run:
+
+```bash
+docker compose down -v
+```
 
 Compile the sample topology:
 
