@@ -35,6 +35,12 @@ class AuthResponse(AppBase):
     user: UserProfile
 
 
+class ProfileUpdateRequest(AppBase):
+    email: str | None = Field(default=None, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    password: str | None = Field(default=None, min_length=8, max_length=200)
+
+
 class AIModelDescriptor(AppBase):
     id: str
     provider: str
@@ -97,3 +103,33 @@ class CodebaseDetail(CodebaseSummary):
     validation: TerraformValidationResult
     generated_files: list[GeneratedFile]
     agent_notes: list[AgentNote] = Field(default_factory=list)
+
+
+class AssistantQueryRequest(AppBase):
+    message: str = Field(min_length=1, max_length=1000)
+    codebase_id: str | None = Field(default=None, max_length=80)
+
+
+class AssistantQueryResponse(AppBase):
+    answer: str
+    related_codebase_name: str | None = None
+    suggestions: list[str] = Field(default_factory=list)
+
+
+class ChatMessage(AppBase):
+    id: str
+    role: Literal["user", "assistant"]
+    content: str
+    codebase_id: str | None = None
+    created_at: str
+
+
+class ChatRequest(AppBase):
+    message: str = Field(min_length=1, max_length=2000)
+    codebase_id: str | None = Field(default=None, max_length=80)
+
+
+class ChatResponse(AppBase):
+    user_message: ChatMessage
+    assistant_message: ChatMessage
+    suggestions: list[str] = Field(default_factory=list)

@@ -5,8 +5,10 @@ import os
 
 from ..app_models import AIModelDescriptor, AgentNote
 from ..models import (
+    CloudProvider,
     DataStore,
     DeploymentTarget,
+    DeploymentEnvironment,
     Edge,
     Port,
     ServiceNode,
@@ -70,6 +72,9 @@ def image_to_topology(
     name: str,
     provider: str,
     model: str | None,
+    deployment_provider: CloudProvider = "aws",
+    deployment_region: str = "us-east-1",
+    deployment_environment: DeploymentEnvironment = "dev",
 ) -> AgentResult:
     selected = provider or "local-heuristic"
     configured = {item.id: item.configured for item in model_catalog()}
@@ -95,7 +100,15 @@ def image_to_topology(
             )
         )
 
-    topology = _heuristic_topology(image_bytes=image_bytes, filename=filename, owner=owner, name=name)
+    topology = _heuristic_topology(
+        image_bytes=image_bytes,
+        filename=filename,
+        owner=owner,
+        name=name,
+        deployment_provider=deployment_provider,
+        deployment_region=deployment_region,
+        deployment_environment=deployment_environment,
+    )
     return AgentResult(
         topology=topology,
         provider=selected,
@@ -104,13 +117,22 @@ def image_to_topology(
     )
 
 
-def _heuristic_topology(*, image_bytes: bytes, filename: str, owner: str, name: str) -> TopologySpec:
+def _heuristic_topology(
+    *,
+    image_bytes: bytes,
+    filename: str,
+    owner: str,
+    name: str,
+    deployment_provider: CloudProvider,
+    deployment_region: str,
+    deployment_environment: DeploymentEnvironment,
+) -> TopologySpec:
     digest = hashlib.sha256(image_bytes).hexdigest()[:12]
     base = _slug(name or filename.rsplit(".", 1)[0] or "w2p-app")
 
-    api_id = f"{base[:47]}-api".strip("-")
-    db_id = f"{base[:46]}-db".strip("-")
-    queue_id = f"{base[:43]}-queue".strip("-")
+    api_id = _bounded_id(base, "api")
+    db_id = _bounded_id(base, "db")
+    queue_id = _bounded_id(base, "queue")
 
     include_queue = any(token in filename.lower() for token in ["queue", "event", "async", "worker"]) or int(digest[0], 16) % 2 == 0
 
@@ -128,7 +150,7 @@ def _heuristic_topology(*, image_bytes: bytes, filename: str, owner: str, name: 
     ]
     edges = [
         Edge(
-            id=f"{api_id}-to-{db_id}"[:63].rstrip("-"),
+            id=_bounded_id(api_id, "to", db_id),
             **{"from": api_id, "to": db_id},
             protocol="postgres",
             purpose="application persistence",
@@ -150,7 +172,7 @@ def _heuristic_topology(*, image_bytes: bytes, filename: str, owner: str, name: 
         )
         edges.append(
             Edge(
-                id=f"{api_id}-to-{queue_id}"[:63].rstrip("-"),
+                id=_bounded_id(api_id, "to", queue_id),
                 **{"from": api_id, "to": queue_id},
                 protocol="sqs",
                 purpose="asynchronous work dispatch",
@@ -166,7 +188,11 @@ def _heuristic_topology(*, image_bytes: bytes, filename: str, owner: str, name: 
             description=f"Generated from uploaded whiteboard image {filename}.",
             tags={"source": "image", "image_sha256_prefix": digest},
         ),
-        deployment=DeploymentTarget(provider="aws", region="us-east-1", environment="dev"),
+        deployment=DeploymentTarget(
+            provider=deployment_provider,
+            region=deployment_region,
+            environment=deployment_environment,
+        ),
         trust_zones=[
             TrustZone(id="private", name="Private Workloads", exposure="private"),
             TrustZone(id="public", name="Public Edge", exposure="public"),
@@ -216,3 +242,10 @@ def _slug(value: str) -> str:
         slug = f"app-{slug or 'generated'}"
     return slug[:48].rstrip("-")
 
+
+def _bounded_id(*parts: str) -> str:
+    raw = "-".join(part.strip("-") for part in parts if part.strip("-"))
+    if len(raw) <= 63:
+        return raw
+    digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:8]
+    return f"{raw[:54].rstrip('-')}-{digest}"

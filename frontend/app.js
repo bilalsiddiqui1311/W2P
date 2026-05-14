@@ -7,6 +7,10 @@ const state = {
   selectedFile: null,
   stream: null,
   models: [],
+  profileEditing: false,
+  messages: [],
+  chatOpen: false,
+  chatSuggestions: [],
 };
 
 const $ = (id) => document.getElementById(id);
@@ -15,6 +19,33 @@ const icons = {
   trash: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>',
   download: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>',
 };
+
+const cloudRegions = {
+  aws: [
+    ["us-east-1", "AWS us-east-1"],
+    ["us-west-2", "AWS us-west-2"],
+    ["eu-west-1", "AWS eu-west-1"],
+    ["ap-south-1", "AWS ap-south-1"],
+  ],
+  azure: [
+    ["eastus", "Azure East US"],
+    ["westus2", "Azure West US 2"],
+    ["westeurope", "Azure West Europe"],
+    ["centralindia", "Azure Central India"],
+  ],
+  gcp: [
+    ["us-central1", "GCP us-central1"],
+    ["us-east1", "GCP us-east1"],
+    ["europe-west1", "GCP europe-west1"],
+    ["asia-south1", "GCP asia-south1"],
+  ],
+};
+
+const defaultChatPrompts = [
+  "What model does W2P follow?",
+  "Analyze this software architecture",
+  "What is missing for SaaS production?",
+];
 
 function authHeaders() {
   return state.token ? { Authorization: `Bearer ${state.token}` } : {};
@@ -106,11 +137,14 @@ async function hydrate() {
   try {
     state.user = await api("/v1/me");
     state.codebases = await api("/v1/codebases");
+    await loadChatMessages();
   } catch (error) {
     localStorage.removeItem("w2p_token");
     state.token = null;
     state.user = null;
     state.codebases = [];
+    state.messages = [];
+    state.chatOpen = false;
     toast(error.message);
   }
   render();
@@ -135,14 +169,34 @@ function render() {
   $("authPanel").hidden = signedIn;
   $("profilePanel").hidden = !signedIn;
   $("logoutButton").hidden = !signedIn;
+  $("generateNavLink").hidden = !signedIn;
+  $("generatePanel").hidden = !signedIn;
+  $("appShell").classList.toggle("signed-out", !signedIn);
   $("generateButton").disabled = !signedIn;
   $("rerunValidationButton").disabled = !state.active;
   $("downloadTerraformButton").disabled = !state.active;
+  $("chatbotShell").hidden = !signedIn;
+  $("chatPanel").hidden = !signedIn || !state.chatOpen;
+  $("chatToggleButton").setAttribute("aria-expanded", String(signedIn && state.chatOpen));
 
   renderModels();
+  renderDeploymentRegions();
   renderProfile();
   renderCodebases();
   renderActive();
+  renderChat();
+}
+
+function renderDeploymentRegions() {
+  const provider = $("deploymentProviderSelect").value || "aws";
+  const select = $("deploymentRegionSelect");
+  const current = select.value;
+  const regions = cloudRegions[provider] || cloudRegions.aws;
+  select.innerHTML = regions
+    .map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`)
+    .join("");
+  select.value = regions.some(([value]) => value === current) ? current : regions[0][0];
+  $("deploymentStatus").textContent = `${provider.toUpperCase()} / ${select.value}`;
 }
 
 function renderModels() {
@@ -157,12 +211,181 @@ function renderModels() {
 function renderProfile() {
   if (!state.user) {
     $("avatar").textContent = "W";
+    $("profileForm").hidden = true;
     return;
   }
   $("profileName").textContent = state.user.name;
   $("profileEmail").textContent = state.user.email;
   $("avatar").textContent = state.user.name.slice(0, 1).toUpperCase();
   $("codebaseCount").textContent = `${state.codebases.length} saved`;
+  $("profileForm").hidden = !state.profileEditing;
+  $("editProfileButton").innerHTML = state.profileEditing
+    ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>Cancel edit'
+    : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit profile';
+}
+
+function toggleProfileEdit() {
+  state.profileEditing = !state.profileEditing;
+  if (state.profileEditing && state.user) {
+    $("profileNameInput").value = state.user.name;
+    $("profileEmailInput").value = state.user.email;
+    $("profilePasswordInput").value = "";
+  }
+  renderProfile();
+}
+
+async function submitProfile(event) {
+  event.preventDefault();
+  const body = {
+    name: $("profileNameInput").value.trim(),
+    email: $("profileEmailInput").value.trim(),
+  };
+  const password = $("profilePasswordInput").value;
+  if (password) {
+    body.password = password;
+  }
+
+  try {
+    state.user = await api("/v1/me", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+    state.profileEditing = false;
+    render();
+    toast("Profile updated");
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
+async function loadChatMessages() {
+  if (!state.token) {
+    state.messages = [];
+    return;
+  }
+  state.messages = await api("/v1/chat/messages");
+}
+
+function renderChat() {
+  const thread = $("chatThread");
+  if (!state.user || !thread) {
+    return;
+  }
+  $("chatContext").textContent = state.active
+    ? `Using ${state.active.name} as context`
+    : "General workspace assistant";
+  $("chatPrompts").innerHTML = (state.chatSuggestions.length ? state.chatSuggestions : defaultChatPrompts)
+    .map((prompt) => `<button type="button" data-chat-prompt="${escapeHtml(prompt)}">${escapeHtml(prompt)}</button>`)
+    .join("");
+
+  if (!state.messages.length) {
+    thread.innerHTML = `
+      <div class="chat-empty">
+        <strong>Ready when you are.</strong>
+        <span>Ask about generation, Terraform, validation, deployment targets, or a selected codebase.</span>
+      </div>
+    `;
+  } else {
+    thread.innerHTML = state.messages
+      .map(
+        (item) => `
+          <article class="chat-message ${escapeHtml(item.role)}${item.pending ? " pending" : ""}">
+            <span>${item.role === "user" ? "You" : "W2P"}</span>
+            <p>${escapeHtml(item.content)}</p>
+          </article>
+        `,
+      )
+      .join("");
+  }
+  thread.scrollTop = thread.scrollHeight;
+}
+
+function toggleChat(open = !state.chatOpen) {
+  if (!state.user) {
+    return;
+  }
+  state.chatOpen = open;
+  render();
+}
+
+async function submitChat(event) {
+  event.preventDefault();
+  if (!state.user) {
+    toast("Login or signup before opening the assistant.");
+    return;
+  }
+
+  const input = $("chatInput");
+  const message = input.value.trim();
+  if (!message) {
+    return;
+  }
+  await sendChatMessage(message);
+}
+
+async function sendChatMessage(message) {
+  $("chatInput").value = "";
+  $("chatSendButton").disabled = true;
+  state.chatOpen = true;
+  const pendingUser = {
+    id: `pending-user-${Date.now()}`,
+    role: "user",
+    content: message,
+    codebase_id: state.active?.id || null,
+    created_at: new Date().toISOString(),
+    pending: true,
+  };
+  const pendingAssistant = {
+    id: `pending-assistant-${Date.now()}`,
+    role: "assistant",
+    content: "Analyzing workspace context...",
+    codebase_id: state.active?.id || null,
+    created_at: new Date().toISOString(),
+    pending: true,
+  };
+  state.messages.push(pendingUser, pendingAssistant);
+  render();
+
+  try {
+    const result = await api("/v1/chat/messages", {
+      method: "POST",
+      body: JSON.stringify({
+        message,
+        codebase_id: state.active?.id || null,
+      }),
+    });
+    state.messages = state.messages.filter((item) => item.id !== pendingUser.id && item.id !== pendingAssistant.id);
+    state.messages.push(result.user_message, result.assistant_message);
+    state.chatSuggestions = result.suggestions || [];
+  } catch (error) {
+    state.messages = state.messages.filter((item) => item.id !== pendingAssistant.id);
+    const userItem = state.messages.find((item) => item.id === pendingUser.id);
+    if (userItem) {
+      userItem.pending = false;
+    }
+    state.messages.push({
+      id: `local-error-${Date.now()}`,
+      role: "assistant",
+      content: error.message,
+      codebase_id: null,
+      created_at: new Date().toISOString(),
+    });
+  } finally {
+    $("chatSendButton").disabled = false;
+    render();
+  }
+}
+
+async function clearChat() {
+  try {
+    await api("/v1/chat/messages", { method: "DELETE" });
+    state.messages = [];
+    state.chatSuggestions = [];
+    renderChat();
+    toast("Chat cleared");
+  } catch (error) {
+    toast(error.message);
+  }
 }
 
 function renderCodebases() {
@@ -193,6 +416,9 @@ function renderActive() {
   $("topologyStatus").textContent = active ? "Extracted" : "Waiting";
   $("policyStatus").textContent = active ? active.status : "Waiting";
   $("terraformStatus").textContent = active ? active.validation.status : "Waiting";
+  $("deploymentStatus").textContent = active
+    ? `${active.topology.deployment.provider.toUpperCase()} / ${active.topology.deployment.region}`
+    : `${$("deploymentProviderSelect").value.toUpperCase()} / ${$("deploymentRegionSelect").value}`;
 
   const notes = active?.agent_notes || [];
   $("agentNotes").innerHTML = notes
@@ -268,13 +494,16 @@ async function generate(event) {
     return;
   }
   if (!state.selectedFile) {
-    toast("Choose an image or capture a camera frame.");
+    toast("Choose an image or grab a camera frame.");
     return;
   }
 
   const form = new FormData();
   form.append("name", $("codebaseName").value.trim());
   form.append("provider", $("providerSelect").value);
+  form.append("deployment_provider", $("deploymentProviderSelect").value);
+  form.append("deployment_region", $("deploymentRegionSelect").value);
+  form.append("deployment_environment", $("deploymentEnvironmentSelect").value);
   if ($("modelInput").value.trim()) {
     form.append("model", $("modelInput").value.trim());
   }
@@ -310,7 +539,7 @@ async function startCamera() {
 function captureFrame() {
   const video = $("cameraVideo");
   if (!state.stream || !video.videoWidth) {
-    toast("Start the camera before capturing.");
+    toast("Start the camera before grabbing a frame.");
     return;
   }
   const canvas = $("cameraCanvas");
@@ -319,11 +548,11 @@ function captureFrame() {
   canvas.getContext("2d").drawImage(video, 0, 0);
   canvas.toBlob((blob) => {
     if (!blob) {
-      toast("Could not capture camera frame.");
+      toast("Could not grab camera frame.");
       return;
     }
-    state.selectedFile = new File([blob], "camera-capture.png", { type: "image/png" });
-    $("fileLabel").textContent = "camera-capture.png";
+    state.selectedFile = new File([blob], "camera-frame.png", { type: "image/png" });
+    $("fileLabel").textContent = "camera-frame.png";
   }, "image/png");
 }
 
@@ -386,7 +615,34 @@ function escapeHtml(value) {
 $("loginTab").addEventListener("click", () => setAuthMode("login"));
 $("signupTab").addEventListener("click", () => setAuthMode("signup"));
 $("authForm").addEventListener("submit", submitAuth);
+$("editProfileButton").addEventListener("click", toggleProfileEdit);
+$("profileForm").addEventListener("submit", submitProfile);
 $("generateForm").addEventListener("submit", generate);
+$("chatToggleButton").addEventListener("click", () => toggleChat());
+$("closeChatButton").addEventListener("click", () => toggleChat(false));
+$("clearChatButton").addEventListener("click", clearChat);
+$("chatForm").addEventListener("submit", submitChat);
+$("chatPrompts").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-chat-prompt]");
+  if (button) {
+    sendChatMessage(button.dataset.chatPrompt);
+  }
+});
+$("chatInput").addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    $("chatForm").requestSubmit();
+  }
+});
+$("deploymentProviderSelect").addEventListener("change", () => {
+  renderDeploymentRegions();
+});
+$("deploymentRegionSelect").addEventListener("change", () => {
+  $("deploymentStatus").textContent = `${$("deploymentProviderSelect").value.toUpperCase()} / ${$("deploymentRegionSelect").value}`;
+});
+$("deploymentEnvironmentSelect").addEventListener("change", () => {
+  $("deploymentStatus").textContent = `${$("deploymentProviderSelect").value.toUpperCase()} / ${$("deploymentRegionSelect").value}`;
+});
 $("startCameraButton").addEventListener("click", startCamera);
 $("captureButton").addEventListener("click", captureFrame);
 $("rerunValidationButton").addEventListener("click", rerunValidation);
@@ -398,6 +654,10 @@ $("logoutButton").addEventListener("click", () => {
   state.user = null;
   state.active = null;
   state.codebases = [];
+  state.profileEditing = false;
+  state.messages = [];
+  state.chatOpen = false;
+  state.chatSuggestions = [];
   render();
 });
 

@@ -51,6 +51,15 @@ def initialize_storage() -> None:
               created_at text not null default current_timestamp,
               updated_at text not null default current_timestamp
             );
+
+            create table if not exists chat_messages (
+              id text primary key,
+              user_id text not null references users(id) on delete cascade,
+              codebase_id text references codebases(id) on delete set null,
+              role text not null check (role in ('user', 'assistant')),
+              content text not null,
+              created_at text not null default current_timestamp
+            );
             """
         )
 
@@ -106,6 +115,43 @@ def get_user_for_token(token: str) -> dict[str, Any] | None:
             (hash_token(token),),
         ).fetchone()
     return dict(row) if row is not None else None
+
+
+def update_user(
+    user_id: str,
+    *,
+    email: str | None = None,
+    name: str | None = None,
+    password: str | None = None,
+) -> dict[str, Any]:
+    changes: list[str] = []
+    values: list[str] = []
+
+    if email is not None:
+        changes.append("email = ?")
+        values.append(email.lower())
+    if name is not None:
+        changes.append("name = ?")
+        values.append(name)
+    if password is not None:
+        changes.append("password_hash = ?")
+        values.append(hash_password(password))
+
+    try:
+        with _connect() as conn:
+            if changes:
+                values.append(user_id)
+                conn.execute(f"update users set {', '.join(changes)} where id = ?", values)
+            row = conn.execute(
+                "select id, email, name, created_at from users where id = ?",
+                (user_id,),
+            ).fetchone()
+    except sqlite3.IntegrityError as exc:
+        raise ValueError("email is already registered") from exc
+
+    if row is None:
+        raise ValueError("user was not found")
+    return dict(row)
 
 
 def create_codebase(
@@ -179,6 +225,49 @@ def delete_codebase(user_id: str, codebase_id: str) -> bool:
         return cursor.rowcount > 0
 
 
+def create_chat_message(
+    *,
+    user_id: str,
+    role: str,
+    content: str,
+    codebase_id: str | None = None,
+) -> dict[str, Any]:
+    message_id = uuid.uuid4().hex
+    with _connect() as conn:
+        conn.execute(
+            """
+            insert into chat_messages (id, user_id, codebase_id, role, content)
+            values (?, ?, ?, ?, ?)
+            """,
+            (message_id, user_id, codebase_id, role, content),
+        )
+        row = conn.execute(
+            "select id, role, content, codebase_id, created_at from chat_messages where id = ?",
+            (message_id,),
+        ).fetchone()
+    return dict(row)
+
+
+def list_chat_messages(user_id: str, *, limit: int = 80) -> list[dict[str, Any]]:
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            select id, role, content, codebase_id, created_at
+            from chat_messages
+            where user_id = ?
+            order by rowid desc
+            limit ?
+            """,
+            (user_id, limit),
+        ).fetchall()
+    return [dict(row) for row in reversed(rows)]
+
+
+def clear_chat_messages(user_id: str) -> None:
+    with _connect() as conn:
+        conn.execute("delete from chat_messages where user_id = ?", (user_id,))
+
+
 def _get_codebase(conn: sqlite3.Connection, user_id: str, codebase_id: str) -> dict[str, Any]:
     row = conn.execute(
         "select * from codebases where user_id = ? and id = ?",
@@ -196,4 +285,3 @@ def _connect() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("pragma foreign_keys = on")
     return conn
-

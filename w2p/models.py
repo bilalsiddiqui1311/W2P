@@ -5,6 +5,8 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 Id = Annotated[str, Field(pattern=r"^[a-z][a-z0-9-]{1,62}$")]
+CloudProvider = Literal["aws", "azure", "gcp"]
+DeploymentEnvironment = Literal["dev", "staging", "prod"]
 
 
 class StrictBase(BaseModel):
@@ -38,9 +40,9 @@ class TopologyMetadata(StrictBase):
 
 
 class DeploymentTarget(StrictBase):
-    provider: Literal["aws"] = "aws"
-    region: str = Field(default="us-east-1", pattern=r"^[a-z]{2}-[a-z]+-\d$")
-    environment: Literal["dev", "staging", "prod"] = "dev"
+    provider: CloudProvider = "aws"
+    region: str = Field(default="us-east-1", pattern=r"^[a-z][a-z0-9-]{1,40}$")
+    environment: DeploymentEnvironment = "dev"
 
 
 class TrustZone(StrictBase):
@@ -182,9 +184,9 @@ class VisualDiagram(StrictBase):
     schema_version: Literal["w2p.visual.v1"] = "w2p.visual.v1"
     name: str = Field(min_length=2, max_length=80)
     owner: str = Field(min_length=3, max_length=120)
-    environment: Literal["dev", "staging", "prod"] = "dev"
-    provider: Literal["aws"] = "aws"
-    region: str = Field(default="us-east-1", pattern=r"^[a-z]{2}-[a-z]+-\d$")
+    environment: DeploymentEnvironment = "dev"
+    provider: CloudProvider = "aws"
+    region: str = Field(default="us-east-1", pattern=r"^[a-z][a-z0-9-]{1,40}$")
     elements: list[VisualElement] = Field(min_length=1)
     connectors: list[VisualConnector] = Field(default_factory=list)
 

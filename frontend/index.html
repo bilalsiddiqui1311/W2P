@@ -6,7 +6,13 @@
     <title>W2P Workbench</title>
     <meta
       name="description"
-      content="Whiteboard-to-Production workbench for image capture, Terraform generation, validation, and codebase management."
+      content="Whiteboard-to-Production workbench for diagram uploads, Terraform generation, validation, and codebase management."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
     />
     <link rel="stylesheet" href="/styles.css" />
   </head>
@@ -17,9 +23,15 @@
         <div class="brand-mark">W</div>
         <div>
           <strong>W2P</strong>
-          <span>whiteboard to production</span>
+          <span>whiteboard → production</span>
         </div>
       </div>
+      <nav class="topnav" aria-label="Workbench sections">
+        <a href="#generatePanel" id="generateNavLink" hidden>Generate</a>
+        <a href="#how">How it works</a>
+        <a href="#features">Features</a>
+        <a href="#stack">Stack</a>
+      </nav>
       <div class="topbar-actions">
         <button class="icon-button" id="refreshButton" type="button" title="Refresh codebases" aria-label="Refresh codebases">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 0 1-15.3 6.4M3 12A9 9 0 0 1 18.3 5.6M18 2v5h-5M6 22v-5h5"/></svg>
@@ -28,7 +40,7 @@
       </div>
     </header>
 
-    <main class="app-shell">
+    <main class="app-shell" id="appShell">
       <aside class="panel sidebar">
         <section id="authPanel">
           <div class="section-kicker">account</div>
@@ -69,6 +81,28 @@
               <p id="profileEmail" class="muted"></p>
             </div>
           </div>
+          <button class="ghost-button profile-edit-button" id="editProfileButton" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+            Edit profile
+          </button>
+          <form id="profileForm" class="form-stack compact-form" hidden>
+            <label>
+              <span>Name</span>
+              <input id="profileNameInput" name="name" autocomplete="name" required />
+            </label>
+            <label>
+              <span>Email</span>
+              <input id="profileEmailInput" name="email" autocomplete="email" required />
+            </label>
+            <label>
+              <span>New password</span>
+              <input id="profilePasswordInput" name="password" type="password" autocomplete="new-password" placeholder="leave blank to keep current" />
+            </label>
+            <button class="primary-button" type="submit">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+              Update profile
+            </button>
+          </form>
           <div class="divider"></div>
           <div class="section-row">
             <div>
@@ -86,16 +120,18 @@
           <div class="hero-copy">
             <div class="hero-badge">
               <span></span>
-              v0.1 active workbench
+              v0.1 — active workbench
             </div>
             <div class="section-kicker">agent pipeline</div>
-            <h2>Image in. <span class="text-gradient">Terraform out.</span> Validation included.</h2>
+            <h2>From <span class="mono-muted">/whiteboard</span> to <span class="text-gradient">production</span>.</h2>
             <div class="stack-chips" aria-label="Supported stack signals">
-              <span>AWS</span>
+              <span>▲ AWS</span>
+              <span>◆ GCP</span>
+              <span>● Azure</span>
               <span>Terraform</span>
               <span>FastAPI</span>
               <span>Policy-as-Code</span>
-              <span>Docker</span>
+              <span>⎇ GitHub Actions</span>
             </div>
           </div>
         </div>
@@ -136,9 +172,13 @@
             <span>Terraform</span>
             <strong id="terraformStatus">Waiting</strong>
           </div>
+          <div class="metric">
+            <span>Deploy</span>
+            <strong id="deploymentStatus">Choose target</strong>
+          </div>
         </div>
 
-        <section class="panel output-panel">
+        <section class="panel output-panel" id="outputPanel">
           <div class="section-row">
             <div>
               <div class="section-kicker">generated codebase</div>
@@ -155,7 +195,7 @@
           <pre id="codeOutput" class="code-output"><code>Select or generate a codebase to inspect Terraform, backend, container, policy, and schema artifacts.</code></pre>
         </section>
 
-        <section class="panel validation-panel">
+        <section class="panel validation-panel" id="validationPanel">
           <div class="section-row">
             <div>
               <div class="section-kicker">verification</div>
@@ -170,11 +210,11 @@
         </section>
       </section>
 
-      <aside class="panel capture-rail">
+      <aside class="panel generate-rail" id="generatePanel" hidden>
         <div class="section-row">
           <div>
-            <div class="section-kicker">capture</div>
-            <h2>Camera or image upload</h2>
+            <div class="section-kicker">generate</div>
+            <h2>Diagram to Terraform</h2>
           </div>
         </div>
 
@@ -183,6 +223,31 @@
             <span>Codebase name</span>
             <input id="codebaseName" name="name" placeholder="checkout-platform" required />
           </label>
+          <div class="deploy-box">
+            <div class="section-kicker">deployment target</div>
+            <div class="deploy-grid">
+              <label>
+                <span>Cloud</span>
+                <select id="deploymentProviderSelect" name="deployment_provider">
+                  <option value="aws">AWS</option>
+                  <option value="azure">Azure</option>
+                  <option value="gcp">Google Cloud</option>
+                </select>
+              </label>
+              <label>
+                <span>Environment</span>
+                <select id="deploymentEnvironmentSelect" name="deployment_environment">
+                  <option value="dev">Dev</option>
+                  <option value="staging">Staging</option>
+                  <option value="prod">Prod</option>
+                </select>
+              </label>
+            </div>
+            <label>
+              <span>Region</span>
+              <select id="deploymentRegionSelect" name="deployment_region"></select>
+            </label>
+          </div>
           <label>
             <span>AI model</span>
             <select id="providerSelect" name="provider"></select>
@@ -196,7 +261,7 @@
             <input id="imageInput" name="image" type="file" accept="image/*" />
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg>
             <strong id="fileLabel">Drop image or choose file</strong>
-            <span>PNG, JPG, or camera capture</span>
+            <span>PNG, JPG, or camera frame</span>
           </div>
 
           <div class="camera-box">
@@ -206,7 +271,7 @@
               <button class="icon-button" id="startCameraButton" type="button" title="Start camera" aria-label="Start camera">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3l2-2h6l2 2h3v12H4zM12 10a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg>
               </button>
-              <button class="icon-button" id="captureButton" type="button" title="Capture frame" aria-label="Capture frame">
+              <button class="icon-button" id="captureButton" type="button" title="Grab frame" aria-label="Grab frame">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14v10H5zM9 3h6l2 4H7zM12 10a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>
               </button>
             </div>
@@ -221,6 +286,162 @@
         <div id="agentNotes" class="notes"></div>
       </aside>
     </main>
+
+    <section class="static-showcase" aria-label="W2P overview">
+      <section class="story-section" id="how">
+        <div class="section-kicker with-line"><span></span>workflow</div>
+        <div class="story-heading">
+          <h2>Four steps. Diagram in, deployable system out.</h2>
+        </div>
+        <div class="how-grid">
+          <article class="how-card">
+            <div class="card-topline">
+              <span>01</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/></svg>
+            </div>
+            <h3>Sketch / upload</h3>
+            <p>Drop a whiteboard photo, export, or camera frame into the workbench.</p>
+          </article>
+          <article class="how-card">
+            <div class="card-topline">
+              <span>02</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 2.8a1 1 0 0 1 2 0l1 5.6a2 2 0 0 0 1.6 1.6l5.6 1a1 1 0 0 1 0 2l-5.6 1a2 2 0 0 0-1.6 1.6l-1 5.6a1 1 0 0 1-2 0l-1-5.6A2 2 0 0 0 8.4 14l-5.6-1a1 1 0 0 1 0-2l5.6-1A2 2 0 0 0 10 8.4Z"/><path d="M20 2v4M22 4h-4"/></svg>
+            </div>
+            <h3>AI architecture parse</h3>
+            <p>Services, datastores, queues, boundaries, and flows become normalized topology.</p>
+          </article>
+          <article class="how-card">
+            <div class="card-topline">
+              <span>03</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18 16 4-4-4-4M6 8l-4 4 4 4M14.5 4l-5 16"/></svg>
+            </div>
+            <h3>Generate full stack</h3>
+            <p>Terraform, backend, container, policy, and schema files are generated together.</p>
+          </article>
+          <article class="how-card">
+            <div class="card-topline">
+              <span>04</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6a9 9 0 0 0-9 9V3"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/></svg>
+            </div>
+            <h3>Review / export</h3>
+            <p>Validation findings, generated files, and Terraform ZIP export stay one click away.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="story-section" id="features">
+        <div class="section-kicker with-line"><span></span>capabilities</div>
+        <div class="story-heading wide">
+          <h2>Everything between the sketch and <span class="text-gradient">git push</span>.</h2>
+        </div>
+        <div class="feature-grid">
+          <article class="feature-cell">
+            <div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18 16 4-4-4-4M6 8l-4 4 4 4M14.5 4l-5 16"/></svg></div>
+            <h3>Backend code</h3>
+            <p>FastAPI scaffold with health, readiness, metadata, and secure response headers.</p>
+          </article>
+          <article class="feature-cell">
+            <div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.5 19H9a7 7 0 1 1 6.7-9h1.8a4.5 4.5 0 1 1 0 9Z"/></svg></div>
+            <h3>Infrastructure as Code</h3>
+            <p>Provider-aware Terraform foundations for AWS, Azure, and Google Cloud.</p>
+          </article>
+          <article class="feature-cell">
+            <div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6a9 9 0 0 0-9 9V3"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/></svg></div>
+            <h3>Codebase history</h3>
+            <p>Saved generated systems remain available in the local user profile.</p>
+          </article>
+          <article class="feature-cell">
+            <div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.7 9a1 1 0 0 1-.6 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.2-2.7a1.2 1.2 0 0 1 1.6 0C14.5 3.8 17 5 19 5a1 1 0 0 1 1 1Z"/></svg></div>
+            <h3>Secure by default</h3>
+            <p>Policy checks prefer pinned images, auth, TLS, private networking, and secret references.</p>
+          </article>
+          <article class="feature-cell">
+            <div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12.8 2.2 8.6 3.9a1 1 0 0 1 0 1.8l-8.6 3.9a2 2 0 0 1-1.6 0L2.6 7.9a1 1 0 0 1 0-1.8l8.6-3.9a2 2 0 0 1 1.6 0Z"/><path d="M2 12a1 1 0 0 0 .6.9l8.6 3.9a2 2 0 0 0 1.6 0l8.6-3.9A1 1 0 0 0 22 12M2 17a1 1 0 0 0 .6.9l8.6 3.9a2 2 0 0 0 1.6 0l8.6-3.9A1 1 0 0 0 22 17"/></svg></div>
+            <h3>Multi-cloud aware</h3>
+            <p>Select target cloud, region, and environment before the topology is compiled.</p>
+          </article>
+          <article class="feature-cell">
+            <div class="feature-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14a1 1 0 0 1-.8-1.6l9.9-10.2a.5.5 0 0 1 .9.5L12 8.7A1 1 0 0 0 13 10h7a1 1 0 0 1 .8 1.6l-9.9 10.2a.5.5 0 0 1-.9-.5l2-6A1 1 0 0 0 11 14Z"/></svg></div>
+            <h3>Visual iteration</h3>
+            <p>Regenerate from a new diagram while keeping the architecture as the source signal.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="story-section stack-section" id="stack">
+        <div class="stack-layout">
+          <div>
+            <div class="section-kicker with-line"><span></span>under the hood</div>
+            <h2>Opinionated. Idiomatic. <span class="text-gradient">Yours to own.</span></h2>
+            <p class="story-copy">W2P generates reviewable scaffolds with clear module boundaries, deterministic schemas, and deployment-aware infrastructure.</p>
+            <ul class="stack-list">
+              <li><span>Backend</span><strong>Python FastAPI services</strong></li>
+              <li><span>IaC</span><strong>Terraform for AWS, Azure, GCP</strong></li>
+              <li><span>Runtime</span><strong>Docker and Compose scaffolds</strong></li>
+              <li><span>Policy</span><strong>Security checks plus Rego output</strong></li>
+            </ul>
+          </div>
+          <div class="code-window">
+            <div class="window-bar">
+              <span></span><span></span><span></span>
+              <strong>terraform/main.tf</strong>
+            </div>
+            <pre><code># generated by w2p from whiteboard.png
+locals {
+  project_name = "orders-platform"
+  services     = jsondecode(file("services.json"))
+}
+
+module "api" {
+  source = "./modules/service"
+  name   = "orders-api"
+}
+
+module "db" {
+  source    = "./modules/postgres"
+  encrypted = true
+}</code></pre>
+          </div>
+        </div>
+      </section>
+
+    </section>
+
+    <section class="chatbot-shell" id="chatbotShell" hidden>
+      <button class="chat-launcher" id="chatToggleButton" type="button" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/></svg>
+        W2P Assistant
+      </button>
+      <section class="chat-panel" id="chatPanel" hidden>
+        <header class="chat-header">
+          <div>
+            <div class="section-kicker">assistant</div>
+            <h2>W2P Copilot</h2>
+            <p id="chatContext">Workspace context</p>
+          </div>
+          <div class="chat-actions">
+            <button class="icon-button" id="clearChatButton" type="button" title="Clear chat" aria-label="Clear chat">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
+            </button>
+            <button class="icon-button" id="closeChatButton" type="button" title="Close assistant" aria-label="Close assistant">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+        </header>
+        <div class="chat-prompts" id="chatPrompts">
+          <button type="button" data-chat-prompt="Summarize my active codebase">Summarize</button>
+          <button type="button" data-chat-prompt="Where will this deploy?">Deploy target</button>
+          <button type="button" data-chat-prompt="What should I fix next?">Next fixes</button>
+        </div>
+        <div class="chat-thread" id="chatThread" aria-live="polite"></div>
+        <form id="chatForm" class="chat-form">
+          <textarea id="chatInput" name="message" rows="2" autocomplete="off" placeholder="Ask anything about this software, SaaS readiness, Terraform, or generated files..." required></textarea>
+          <button class="primary-button" id="chatSendButton" type="submit" aria-label="Send message">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+          </button>
+        </form>
+      </section>
+    </section>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <script src="/app.js" defer></script>

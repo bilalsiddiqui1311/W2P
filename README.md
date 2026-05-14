@@ -78,10 +78,14 @@ w2p schema --out schemas/topology.schema.json
 - `POST /v1/auth/signup`
 - `POST /v1/auth/login`
 - `GET /v1/me`
+- `PATCH /v1/me`
 - `GET /v1/codebases`
 - `POST /v1/codebases`
 - `GET /v1/codebases/{id}`
 - `DELETE /v1/codebases/{id}`
+- `GET /v1/chat/messages`
+- `POST /v1/chat/messages`
+- `DELETE /v1/chat/messages`
 - `POST /v1/extract`
 - `POST /v1/compile`
 - `POST /v1/agent/image-to-terraform`
@@ -111,6 +115,8 @@ The first implementation includes a provider catalog for OpenAI vision, Anthropi
 - `GOOGLE_API_KEY` and `W2P_GEMINI_MODEL`
 
 Until live provider execution is enabled in a deployment, W2P records the selected provider intent and uses the deterministic local extractor to keep outputs reproducible.
+
+The authenticated W2P Copilot chat uses workspace context from the signed-in user, saved codebases, active topology, validation findings, policy issues, generated files, and recent chat history. Set `OPENAI_API_KEY` and optionally `W2P_CHAT_MODEL` to enable the live OpenAI Responses API path. Without a key, the app keeps running with a local workspace analyzer so development never blocks on provider credentials.
 
 ## Terraform Verification
 

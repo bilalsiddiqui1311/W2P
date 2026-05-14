@@ -15,6 +15,8 @@ services:
     environment:
       W2P_ENV: "dev"
       W2P_DB_PATH: "/data/w2p.sqlite3"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      W2P_CHAT_MODEL: "${W2P_CHAT_MODEL:-}"
     volumes:
       - w2p_data:/data
 

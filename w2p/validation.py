@@ -52,12 +52,8 @@ def _architecture_findings(files: dict[str, str]) -> list[ValidationFinding]:
     body = "\n".join(files.values())
     findings: list[ValidationFinding] = []
 
-    required_markers = {
-        "aws_ecs_task_definition": "W2P-ARCH-001",
-        "aws_ecs_service": "W2P-ARCH-002",
-        "assign_public_ip = false": "W2P-ARCH-003",
-        "storage_encrypted         = true": "W2P-ARCH-004",
-    }
+    provider = _detect_provider(body)
+    required_markers = _required_markers_for(provider)
     for marker, code in required_markers.items():
         if marker not in body:
             findings.append(
@@ -88,6 +84,37 @@ def _architecture_findings(files: dict[str, str]) -> list[ValidationFinding]:
             )
 
     return findings
+
+
+def _detect_provider(body: str) -> str:
+    if 'provider "azurerm"' in body:
+        return "azure"
+    if 'provider "google"' in body:
+        return "gcp"
+    return "aws"
+
+
+def _required_markers_for(provider: str) -> dict[str, str]:
+    if provider == "azure":
+        return {
+            'provider "azurerm"': "W2P-ARCH-AZ-001",
+            "azurerm_resource_group": "W2P-ARCH-AZ-002",
+            "azurerm_virtual_network": "W2P-ARCH-AZ-003",
+            "azurerm_container_app_environment": "W2P-ARCH-AZ-004",
+        }
+    if provider == "gcp":
+        return {
+            'provider "google"': "W2P-ARCH-GCP-001",
+            "google_compute_network": "W2P-ARCH-GCP-002",
+            "google_compute_subnetwork": "W2P-ARCH-GCP-003",
+            "google_artifact_registry_repository": "W2P-ARCH-GCP-004",
+        }
+    return {
+        "aws_ecs_task_definition": "W2P-ARCH-001",
+        "aws_ecs_service": "W2P-ARCH-002",
+        "assign_public_ip = false": "W2P-ARCH-003",
+        "storage_encrypted         = true": "W2P-ARCH-004",
+    }
 
 
 def _terraform_checks(root: Path) -> list[ToolCheck]:

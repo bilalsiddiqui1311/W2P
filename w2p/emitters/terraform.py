@@ -9,6 +9,14 @@ SECRET_KEY_PATTERN = re.compile(r"(SECRET|TOKEN|PASSWORD|PRIVATE_KEY|API_KEY|DAT
 
 
 def generate_terraform_files(topology: TopologySpec) -> dict[str, str]:
+    if topology.deployment.provider == "azure":
+        return _generate_azure_terraform_files(topology)
+    if topology.deployment.provider == "gcp":
+        return _generate_gcp_terraform_files(topology)
+    return _generate_aws_terraform_files(topology)
+
+
+def _generate_aws_terraform_files(topology: TopologySpec) -> dict[str, str]:
     services_json = json.dumps(_services_map(topology), indent=2, sort_keys=True)
     datastores_json = json.dumps(_datastores_map(topology), indent=2, sort_keys=True)
     project_name = _slug(topology.metadata.name)
@@ -41,6 +49,59 @@ secret_resource_arns = []
         "terraform/terraform.tfvars.example": tfvars,
         "terraform/variables.tf": variables_tf,
         "terraform/versions.tf": _VERSIONS_TF,
+    }
+
+
+def _generate_azure_terraform_files(topology: TopologySpec) -> dict[str, str]:
+    project_name = _slug(topology.metadata.name)
+    services_json = json.dumps(_services_map(topology), indent=2, sort_keys=True)
+    datastores_json = json.dumps(_datastores_map(topology), indent=2, sort_keys=True)
+    main_tf = _AZURE_MAIN_TF.replace("__PROJECT_NAME__", project_name)
+    main_tf = main_tf.replace("__SERVICES_JSON__", services_json)
+    main_tf = main_tf.replace("__DATASTORES_JSON__", datastores_json)
+    variables_tf = _AZURE_VARIABLES_TF.replace("__AZURE_LOCATION__", topology.deployment.region)
+    variables_tf = variables_tf.replace("__ENVIRONMENT__", topology.deployment.environment)
+    tfvars = f'''environment    = "{topology.deployment.environment}"
+azure_location = "{topology.deployment.region}"
+
+# Keep empty by default. Add approved CIDRs explicitly.
+ingress_cidr_blocks = []
+egress_cidr_blocks  = []
+'''
+    return {
+        "terraform/main.tf": main_tf,
+        "terraform/outputs.tf": _AZURE_OUTPUTS_TF,
+        "terraform/terraform.tfvars.example": tfvars,
+        "terraform/variables.tf": variables_tf,
+        "terraform/versions.tf": _AZURE_VERSIONS_TF,
+    }
+
+
+def _generate_gcp_terraform_files(topology: TopologySpec) -> dict[str, str]:
+    project_name = _slug(topology.metadata.name)
+    services_json = json.dumps(_services_map(topology), indent=2, sort_keys=True)
+    datastores_json = json.dumps(_datastores_map(topology), indent=2, sort_keys=True)
+    main_tf = _GCP_MAIN_TF.replace("__PROJECT_NAME__", project_name)
+    main_tf = main_tf.replace("__SERVICES_JSON__", services_json)
+    main_tf = main_tf.replace("__DATASTORES_JSON__", datastores_json)
+    variables_tf = _GCP_VARIABLES_TF.replace("__GCP_REGION__", topology.deployment.region)
+    variables_tf = variables_tf.replace("__ENVIRONMENT__", topology.deployment.environment)
+    tfvars = f'''environment = "{topology.deployment.environment}"
+gcp_region  = "{topology.deployment.region}"
+
+# Set this to the target Google Cloud project before apply.
+gcp_project_id = "your-project-id"
+
+# Keep empty by default. Add approved CIDRs explicitly.
+ingress_cidr_blocks = []
+egress_cidr_blocks  = []
+'''
+    return {
+        "terraform/main.tf": main_tf,
+        "terraform/outputs.tf": _GCP_OUTPUTS_TF,
+        "terraform/terraform.tfvars.example": tfvars,
+        "terraform/variables.tf": variables_tf,
+        "terraform/versions.tf": _GCP_VERSIONS_TF,
     }
 
 
@@ -545,5 +606,245 @@ output "sqs_queue_urls" {
   value = {
     for key, value in aws_sqs_queue.queue : key => value.url
   }
+}
+"""
+
+_AZURE_VERSIONS_TF = """terraform {
+  required_version = ">= 1.6.0"
+
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 3.110"
+    }
+  }
+}
+
+provider "azurerm" {
+  features {}
+}
+"""
+
+_AZURE_VARIABLES_TF = """variable "environment" {
+  description = "Deployment environment."
+  type        = string
+  default     = "__ENVIRONMENT__"
+
+  validation {
+    condition     = contains(["dev", "staging", "prod"], var.environment)
+    error_message = "environment must be dev, staging, or prod."
+  }
+}
+
+variable "azure_location" {
+  description = "Azure location for generated infrastructure."
+  type        = string
+  default     = "__AZURE_LOCATION__"
+}
+
+variable "ingress_cidr_blocks" {
+  description = "Approved CIDRs allowed to reach public services. Empty means no ingress."
+  type        = list(string)
+  default     = []
+}
+
+variable "egress_cidr_blocks" {
+  description = "Approved CIDRs for outbound access. Empty means no internet egress."
+  type        = list(string)
+  default     = []
+}
+"""
+
+_AZURE_MAIN_TF = """locals {
+  project_name = "__PROJECT_NAME__"
+  name_prefix  = "${local.project_name}-${var.environment}"
+
+  services = jsondecode(<<SERVICES_JSON
+__SERVICES_JSON__
+SERVICES_JSON
+  )
+
+  datastores = jsondecode(<<DATASTORES_JSON
+__DATASTORES_JSON__
+DATASTORES_JSON
+  )
+}
+
+resource "azurerm_resource_group" "main" {
+  name     = "${local.name_prefix}-rg"
+  location = var.azure_location
+}
+
+resource "azurerm_virtual_network" "main" {
+  name                = "${local.name_prefix}-vnet"
+  address_space       = ["10.42.0.0/16"]
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+}
+
+resource "azurerm_subnet" "workloads" {
+  name                 = "workloads"
+  resource_group_name  = azurerm_resource_group.main.name
+  virtual_network_name = azurerm_virtual_network.main.name
+  address_prefixes     = ["10.42.1.0/24"]
+}
+
+resource "azurerm_network_security_group" "workloads" {
+  name                = "${local.name_prefix}-workloads-nsg"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+
+  security_rule {
+    name                       = "deny-internet-ingress"
+    priority                   = 4096
+    direction                  = "Inbound"
+    access                     = "Deny"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "*"
+    source_address_prefix      = "Internet"
+    destination_address_prefix = "*"
+  }
+}
+
+resource "azurerm_subnet_network_security_group_association" "workloads" {
+  subnet_id                 = azurerm_subnet.workloads.id
+  network_security_group_id = azurerm_network_security_group.workloads.id
+}
+
+resource "azurerm_log_analytics_workspace" "main" {
+  name                = "${local.name_prefix}-logs"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  sku                 = "PerGB2018"
+  retention_in_days   = var.environment == "prod" ? 30 : 14
+}
+
+resource "azurerm_container_app_environment" "main" {
+  name                       = "${local.name_prefix}-apps"
+  location                   = azurerm_resource_group.main.location
+  resource_group_name        = azurerm_resource_group.main.name
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
+}
+
+# Services and datastores are captured in locals for provider-specific module expansion.
+# local.services and local.datastores are intentionally generated from the topology contract.
+"""
+
+_AZURE_OUTPUTS_TF = """output "resource_group_name" {
+  value = azurerm_resource_group.main.name
+}
+
+output "container_app_environment_id" {
+  value = azurerm_container_app_environment.main.id
+}
+"""
+
+_GCP_VERSIONS_TF = """terraform {
+  required_version = ">= 1.6.0"
+
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 5.45"
+    }
+  }
+}
+
+provider "google" {
+  project = var.gcp_project_id
+  region  = var.gcp_region
+}
+"""
+
+_GCP_VARIABLES_TF = """variable "environment" {
+  description = "Deployment environment."
+  type        = string
+  default     = "__ENVIRONMENT__"
+
+  validation {
+    condition     = contains(["dev", "staging", "prod"], var.environment)
+    error_message = "environment must be dev, staging, or prod."
+  }
+}
+
+variable "gcp_project_id" {
+  description = "Google Cloud project ID."
+  type        = string
+}
+
+variable "gcp_region" {
+  description = "Google Cloud region for generated infrastructure."
+  type        = string
+  default     = "__GCP_REGION__"
+}
+
+variable "ingress_cidr_blocks" {
+  description = "Approved CIDRs allowed to reach public services. Empty means no ingress."
+  type        = list(string)
+  default     = []
+}
+
+variable "egress_cidr_blocks" {
+  description = "Approved CIDRs for outbound access. Empty means no internet egress."
+  type        = list(string)
+  default     = []
+}
+"""
+
+_GCP_MAIN_TF = """locals {
+  project_name = "__PROJECT_NAME__"
+  name_prefix  = "${local.project_name}-${var.environment}"
+
+  services = jsondecode(<<SERVICES_JSON
+__SERVICES_JSON__
+SERVICES_JSON
+  )
+
+  datastores = jsondecode(<<DATASTORES_JSON
+__DATASTORES_JSON__
+DATASTORES_JSON
+  )
+}
+
+resource "google_compute_network" "main" {
+  name                    = "${local.name_prefix}-vpc"
+  auto_create_subnetworks = false
+}
+
+resource "google_compute_subnetwork" "workloads" {
+  name          = "${local.name_prefix}-workloads"
+  ip_cidr_range = "10.42.1.0/24"
+  network       = google_compute_network.main.id
+  region        = var.gcp_region
+}
+
+resource "google_compute_firewall" "deny_ingress" {
+  name      = "${local.name_prefix}-deny-ingress"
+  network   = google_compute_network.main.name
+  direction = "INGRESS"
+  priority  = 65534
+
+  deny {
+    protocol = "all"
+  }
+}
+
+resource "google_artifact_registry_repository" "services" {
+  repository_id = "${local.name_prefix}-services"
+  location      = var.gcp_region
+  format        = "DOCKER"
+}
+
+# Services and datastores are captured in locals for provider-specific module expansion.
+# local.services and local.datastores are intentionally generated from the topology contract.
+"""
+
+_GCP_OUTPUTS_TF = """output "network_name" {
+  value = google_compute_network.main.name
+}
+
+output "artifact_registry_repository" {
+  value = google_artifact_registry_repository.services.name
 }
 """

@@ -35,3 +35,22 @@ def test_policy_failure_is_reported_with_generated_files() -> None:
     assert response.status == "policy_failed"
     assert any(issue.code == "W2P-SVC-001" for issue in response.policy_issues)
     assert "terraform/main.tf" in files
+
+
+def test_compile_generates_provider_matched_terraform() -> None:
+    data = TopologySpec.model_validate_json(Path("examples/topology.json").read_text()).model_dump(
+        mode="python",
+        by_alias=True,
+    )
+    data["deployment"] = {
+        "provider": "gcp",
+        "region": "us-central1",
+        "environment": "staging",
+    }
+
+    response = compile_topology(TopologySpec.model_validate(data))
+    files = files_as_mapping(response)
+
+    assert response.status == "success"
+    assert 'provider "google"' in files["terraform/versions.tf"]
+    assert "google_compute_network" in files["terraform/main.tf"]
